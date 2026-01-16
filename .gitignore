@@ -1,0 +1,10 @@
+# Virtual Environments
+.venv/
+alpha_env/
+.alpha_env/
+venv/
+env/
+ENV/
+# Compiled files
+__pycache__/
+*.pyc
