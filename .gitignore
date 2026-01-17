@@ -8,3 +8,8 @@ ENV/
 # Compiled files
 __pycache__/
 *.pyc
+
+# log files and input
+
+*.txt
+*.log
