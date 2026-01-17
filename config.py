@@ -1,0 +1,3 @@
+UCB_C = 1.4
+
+NUM_SEARCHES = 1000
