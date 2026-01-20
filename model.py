@@ -5,7 +5,7 @@ import config
 
 class ConvBlock(nn.Module):
     def __init__(self, in_channels, out_channels=None, kernel_size=3, padding=1):
-        super().init__()
+        super().__init__()
         outchannels = out_channels or config.NUM_CHANNELS
         self.conv = nn.Conv2d(in_channels,out_channels, kernel_size=kernel_size, padding = padding)
         self.bn = nn.BatchNorm2d(out_channels)
@@ -18,8 +18,8 @@ class ConvBlock(nn.Module):
 
 
 class ResBlock(nn.Module):
-    def __init__(self.channels = None):
-        super().init__()
+    def __init__(self,channels = None):
+        super().__init__()
         channels = channels or config.NUM_CHANNELS
         self.conv1 = nn.Conv2d(channels,channels,3,padding=1,bias = False)
         self.bn1 = nn.BatchNorm2d(channels)
@@ -37,7 +37,7 @@ class ResBlock(nn.Module):
 
 class PolicyHead(nn.Module):
     def __init__(self,in_channels = None, action_size = None):
-        super().init()
+        super().__init__()
         in_channels = in_channels or config.NUM_CHANNELS
         action_size = action_size or config.ACTION_SIZE
 
@@ -56,7 +56,7 @@ class PolicyHead(nn.Module):
 
 class ValueHead(nn.Module):
     def __init__(self,in_channels = None):
-        super().init()
+        super().__init__()
         in_channels = in_channels or config.NUM_CHANNELS
 
         self.conv = nn.Conv2d(in_channels, config.VALUE_HEAD_CHANNELS, kernel_size=1)
@@ -72,7 +72,7 @@ class ValueHead(nn.Module):
 
 class ChessModel(nn.Module):
     def __init__(self, in_channels = 21, num_res_blocks = None, action_size = None):
-        super().init()
+        super().__init__()
         num_res_blocks = num_res_blocks or config.NUM_RES_BLOCKS
         action_size = action_size or config.ACTION_SIZE
 
