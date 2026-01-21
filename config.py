@@ -1,4 +1,5 @@
 UCB_C = 1.4
+PUCT_C = 1.0
 
 NUM_SEARCHES = 1000
 
