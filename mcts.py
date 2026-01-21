@@ -179,7 +179,21 @@ class AlphaMCTS:
     def search(self, state:ChessEnv):
         root = Node(state)
 
-        for _ in range(config.NUM_SEARCHES):
+        # expand once to get priors 
+
+        value = root.expand(self.model,self.device)
+
+        # dirichlet noise
+        legal_moves = list(root.children.keys())
+        noise = np.random.dirichlet([config.DIRICHLET_ALPHA]*len(legal_moves))
+
+        for move,n in zip(legal_moves,noise):
+            child = root.children[move]
+            child.prior = (1-config.DIRICHLET_EPSILON)*child.prior+config.DIRICHLET_EPSILON*n 
+        
+        root.backpropagate(value)
+
+        for _ in range(config.NUM_SEARCHES-1):
             node = root 
 
             while node.is_fully_expanded():
