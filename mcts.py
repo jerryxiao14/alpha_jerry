@@ -27,6 +27,8 @@ class Node:
     
     def is_fully_expanded(self):
         return len(self.untried_moves)==0 and len(self.children)>0
+    def is_expanded(self):
+        return len(self.children)>0
     
     '''
     def get_ucb(self, child):
@@ -41,7 +43,7 @@ class Node:
         return (child.W / child.N) + config.UCB_C * np.sqrt(np.log(self.N) / child.N)
 
     def get_puct(self, child):
-        q_value = 1 - ((child.W/child.N)+1)/2 
+        q_value = 0 if child.N==0 else 1 - ((child.W/child.N)+1)/2 
         u_value = config.PUCT_C * child.prior * (np.sqrt(self.N) / (1+child.N)) 
         return q_value + u_value
     
@@ -176,6 +178,7 @@ class AlphaMCTS:
         self.model = model 
         self.device = device 
 
+    @torch.no_grad()
     def search(self, state:ChessEnv):
         root = Node(state)
 
@@ -196,17 +199,17 @@ class AlphaMCTS:
         for _ in range(config.NUM_SEARCHES-1):
             node = root 
 
-            while node.is_fully_expanded():
+            while node.is_expanded() and not node.env.is_terminal():
                 node = node.select()
             value = node.env.result()
             if value is None:
                 value = node.expand(self.model,self.device)
             node.backpropagate(value)
         action_probs = {}
-        total_visits = sum(child.N for child in root.children.values())
+        total_visits = sum([child.N for child in root.children.values()])
 
         for child_action, child in root.children.items():
-            action_probs[child_action] = child.N/total_visits 
+            action_probs[child_action] = 0 if total_visits==0 else child.N/total_visits 
         
         return action_probs 
 
