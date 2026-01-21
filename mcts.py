@@ -3,8 +3,12 @@ import numpy as np
 from chessenv import ChessEnv
 import config
 
+import torch 
+
+from decoder import *
+
 class Node:
-    def __init__(self,env:ChessEnv, parent: "Node" = None, parent_move = None):
+    def __init__(self,env:ChessEnv, parent: "Node" = None, parent_move = None, prior = 0):
         self.env = env 
         self.parent = parent 
         self.parent_move = parent_move 
@@ -16,6 +20,7 @@ class Node:
 
         self.N = 0 
         self.W = 0.0
+        self.prior = prior
         
 
 
@@ -35,8 +40,12 @@ class Node:
             return float('inf')
         return (child.W / child.N) + config.UCB_C * np.sqrt(np.log(self.N) / child.N)
 
+    def get_puct(self, child):
+        q_value = 1 - ((child.W/child.N)+1)/2 
+        u_value = config.PUCT_C * child.prior * (np.sqrt(self.N) / (1+child.N)) 
+        return q_value + u_value
     
-    def expand(self):
+    def expand_random(self):
         action = self.untried_moves[-1]
         self.untried_moves.pop()
         
@@ -45,7 +54,34 @@ class Node:
         child = Node(child_state, parent = self, parent_move = action)
         self.children[action] = child 
         return child 
-    def select(self):
+    
+    def expand(self, model, device):
+        planes = self.env.encode() 
+        x = torch.tensor(planes, dtype = torch.float32).unsqueeze(0).to(device)
+
+        with torch.no_grad():
+            policy, value = model(x)
+        policy = policy.squeeze(0).cpu().numpy()
+        value = value.item()
+        legal_moves = self.env.legal_moves()
+
+        priors = []
+        total_prior = 0.0
+
+        for move in legal_moves:
+            idx = move_to_index(move)
+            priors.append(policy[idx])
+        priors = np.array(priors)
+        priors = np.maximum(priors,1e-10)
+        priors /= np.sum(priors)
+        
+        for move,prior in zip(legal_moves,priors):
+            next_env = self.env.copy()
+            next_env.push(move)
+            self.children[move] = Node(next_env,parent=self,parent_move=move,prior=prior)
+        return value
+    
+    def select_random(self):
         best_child = None 
         best_ucb = -np.inf
         
@@ -54,6 +90,15 @@ class Node:
             if ucb > best_ucb:
                 best_child = child 
                 best_ucb = ucb 
+        return best_child 
+    def select(self):
+        best_child = None 
+        best_puct = -np.inf 
+        for child_action, child in self.children.items():
+            puct = self.get_puct(child)
+            if puct > best_puct:
+                best_child = child 
+                best_puct = puct 
         return best_child 
     
     def simulate(self):
@@ -91,7 +136,9 @@ class Node:
     
 
 class MCTS:
-    def __init__(self):
+    def __init__(self,model = None, device = 'cpu'):
+        self.model = model 
+        self.device = device
         pass 
 
     def search(self,state):
@@ -101,12 +148,12 @@ class MCTS:
             node = root 
 
             while node.is_fully_expanded():
-                node = node.select()
+                node = node.select_random()
         
             val = node.env.result()
             if val is None:
                 if node.untried_moves:
-                    node = node.expand()
+                    node = node.expand_random()
                     val = node.simulate()
             else:
                 pass
@@ -124,8 +171,30 @@ class MCTS:
         return action_probs 
 
 
+class AlphaMCTS:
+    def __init__(self,model, device = 'cpu'):
+        self.model = model 
+        self.device = device 
+
+    def search(self, state:ChessEnv):
+        root = Node(state)
+
+        for _ in range(config.NUM_SEARCHES):
+            node = root 
+
+            while node.is_fully_expanded():
+                node = node.select()
+            value = node.env.result()
+            if value is None:
+                value = node.expand(self.model,self.device)
+            node.backpropagate(value)
+        action_probs = {}
+        total_visits = sum(child.N for child in root.children.values())
+
+        for child_action, child in root.children.items():
+            action_probs[child_action] = child.N/total_visits 
         
-            
+        return action_probs 
 
             
 
