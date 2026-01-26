@@ -43,9 +43,10 @@ class Node:
         return (child.W / child.N) + config.UCB_C * np.sqrt(np.log(self.N) / child.N)
 
     def get_puct(self, child):
-        q_value = 0 if child.N==0 else 1 - ((child.W/child.N)+1)/2 
-        u_value = config.PUCT_C * child.prior * (np.sqrt(self.N) / (1+child.N)) 
-        return q_value + u_value
+        q = 0 if child.N == 0 else child.W / child.N
+        u = config.PUCT_C * child.prior * np.sqrt(self.N) / (1 + child.N)
+        return q + u
+
     
     def expand_random(self):
         action = self.untried_moves[-1]
@@ -134,7 +135,7 @@ class Node:
         self.N+=1 
         #print(f'propagating state {self.env.board} with val {value}')
         if self.parent is not None:
-            self.parent.backpropagate(value*-1)
+            self.parent.backpropagate(value)
     
 
 class MCTS:
