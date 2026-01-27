@@ -8,11 +8,11 @@ import torch
 from decoder import *
 
 class Node:
-    def __init__(self,env:ChessEnv, parent: "Node" = None, parent_move = None, prior = 0):
+    def __init__(self,env:ChessEnv, parent: "Node" = None, parent_move = None, prior = 0,depth = 0):
         self.env = env 
         self.parent = parent 
         self.parent_move = parent_move 
-
+        self.depth = depth
         self.children = {}
         self.untried_moves = env.legal_moves()
 
@@ -49,16 +49,20 @@ class Node:
 
     
     def expand_random(self):
+        if self.depth >= config.MAX_MCTS_DEPTH:
+            return None
         action = self.untried_moves[-1]
         self.untried_moves.pop()
         
         child_state = self.env.copy()
         child_state.push(action)
-        child = Node(child_state, parent = self, parent_move = action)
+        child = Node(child_state, parent = self, parent_move = action,depth = self.depth+1)
         self.children[action] = child 
         return child 
     
-    def expand(self, model, device):
+    def expand(self, model, device,root_depth_counter=0):
+        if self.depth-root_depth_counter >= config.MAX_MCTS_DEPTH:
+            return 0.0  # depth cap reached → neutral value
         planes = self.env.encode() 
         x = torch.tensor(planes, dtype = torch.float32).unsqueeze(0).to(device)
 
@@ -81,7 +85,7 @@ class Node:
         for move,prior in zip(legal_moves,priors):
             next_env = self.env.copy()
             next_env.push(move)
-            self.children[move] = Node(next_env,parent=self,parent_move=move,prior=prior)
+            self.children[move] = Node(next_env,parent=self,parent_move=move,prior=prior,depth = self.depth+1)
         return value
     
     def select_random(self):
@@ -178,24 +182,38 @@ class AlphaMCTS:
     def __init__(self,model, device = 'cpu'):
         self.model = model 
         self.device = device 
+        self.root = None
+        self.root_depth_counter = 0
 
     @torch.no_grad()
     def search(self, state:ChessEnv):
-        root = Node(state)
+        new_root = False
+        if self.root is None or self.root.env.board.fen() != state.board.fen():
+            self.root = Node(state)
+            new_root = True 
+            self.root_depth_counter = 0
+
+        root = self.root
 
         # expand once to get priors 
 
-        value = root.expand(self.model,self.device)
-
         # dirichlet noise
-        legal_moves = list(root.children.keys())
-        noise = np.random.dirichlet([config.DIRICHLET_ALPHA]*len(legal_moves))
+        if new_root:
+            value = root.expand(self.model,self.device,root_depth_counter=self.root_depth_counter)
+            root.backpropagate(value)
 
-        for move,n in zip(legal_moves,noise):
-            child = root.children[move]
-            child.prior = (1-config.DIRICHLET_EPSILON)*child.prior+config.DIRICHLET_EPSILON*n 
+
+            legal_moves = list(root.children.keys())
+            noise = np.random.dirichlet(
+                [config.DIRICHLET_ALPHA] * len(legal_moves)
+            )
+            for move, n in zip(legal_moves, noise):
+                child = root.children[move]
+                child.prior = (
+                    (1 - config.DIRICHLET_EPSILON) * child.prior
+                    + config.DIRICHLET_EPSILON * n
+                )
         
-        root.backpropagate(value)
 
         for _ in range(config.NUM_SEARCHES-1):
             node = root 
@@ -204,7 +222,7 @@ class AlphaMCTS:
                 node = node.select()
             value = node.env.result()
             if value is None:
-                value = node.expand(self.model,self.device)
+                value = node.expand(self.model,self.device,root_depth_counter=self.root_depth_counter)
             node.backpropagate(value)
         action_probs = {}
         total_visits = sum([child.N for child in root.children.values()])
@@ -213,6 +231,15 @@ class AlphaMCTS:
             action_probs[child_action] = 0 if total_visits==0 else child.N/total_visits 
         
         return action_probs 
+    def advance_tree(self, action):
+        if self.root is not None and action in self.root.children:
+            new_root = self.root.children[action]
+            new_root.parent = None
+            self.root = new_root
+            self.root_depth_counter+=1
+        else:
+            self.root = None 
+            self.root_depth_counter = 0
     
 
             
