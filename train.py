@@ -108,7 +108,7 @@ class AlphaZero:
         env = ChessEnv() 
         move_count = 0
 
-        while not env.is_terminal():
+        while not env.is_terminal() and move_count<config.MAX_GAME_LENGTH:
             # mcts 
             pi = self.mcts.search(env)
             memory.append([env.encode(),self.pi_to_vector(pi)])
@@ -125,8 +125,11 @@ class AlphaZero:
                 action = np.random.choice(moves, p = probs)
             
             env.push(action)
+            self.mcts.advance_tree(action)
             move_count+=1 
         z = env.result()
+        if z is None:
+            z = 0
 
         for entry in memory:
             entry.append(z)
